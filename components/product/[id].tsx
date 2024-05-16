@@ -1,65 +1,70 @@
-"use client";
+import { GetServerSideProps } from 'next';
+import { ParsedUrlQuery } from 'querystring';
+import { IProduct } from '@/app/types/types';
+import { Button } from "@/components/ui/button";
+import { useAppDispatch } from '@/Redux/hooks';
+import { addProduct } from '@/Redux/features/cartSlice';
+import { db } from '@/db/index';
+import { product as productSchema } from '@/db/scheme';
+import { eq } from 'drizzle-orm/expressions';
 
-import { useState, useEffect } from 'react';
-import { getAllProducts } from '@/utils/proData';
-import { SelectProduct } from '@/db/scheme';
-import { useRouter } from 'next/navigation';
-
-interface Product {
-  id: string;
-  img: string;
-  name: string;
-  price: number;
-  description: string;
-  category: string;
-  sale: boolean;
-  stock: number;
-  createdAt: number;
+interface ProductPageProps {
+    product: IProduct;
 }
 
-const Products = () => {
-  const [products, setProducts] = useState<SelectProduct[]>([]);
-  const [sortBy, setSortBy] = useState<keyof SelectProduct>("name"); // Use setSortBy for changing sortBy state
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc'); // Use setSortOrder for changing sortOrder state
+interface Params extends ParsedUrlQuery {
+    id: string;
+}
 
-  const router = useRouter();
+const ProductPage: React.FC<ProductPageProps> = ({ product }) => {
+    const dispatch = useAppDispatch();
 
-  useEffect(() => {
-    async function fetchData() {
-      const result = await getAllProducts(sortBy, sortOrder);
-      setProducts(result);
-    }
-    fetchData();
-  }, [sortBy, sortOrder]);
+    const addProductToCart = () => {
+        const payload = {
+            id: product.id,
+            name: product.name,
+            img: product.img,
+            price: product.price,
+            quantity: 1,
+        };
 
-  return (
-    <div className="container mx-auto p-4">
-      <div className="flex justify-end mb-4">
-        <label className="mr-2">Sort by:</label>
-        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as keyof SelectProduct)} className="border p-2">
-          <option value="price">Price</option>
-          <option value="name">Name</option>
-        </select>
-        <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as 'asc' | 'desc')} className="border p-2 ml-2">
-          <option value="asc">Ascending</option>
-          <option value="desc">Descending</option>
-        </select>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {products.map((product) => (
-          <div key={product?.id} className="bg-white p-4 rounded-lg shadow relative">
-            <img src={product.img} alt={product?.name} className="w-full h-48 object-cover" />
-            <div className="absolute top-2 right-2 bg-gray-100 px-2 py-1 rounded text-sm">
-              <a href={`${product?.id}.pdf`} className="text-blue-500">PDF</a>
+        dispatch(addProduct(payload));
+    };
+
+    return (
+        <div className="max-w-2xl mx-auto p-4">
+            <h1 className="text-3xl font-bold">{product.name} {product.sale && (<span className="text-red-600">| 15 %</span>)}</h1>
+            <div className="text-green-600 font-medium">{product.stock ? ' Stock' : 'No Stock'}</div>
+            <div className="text-sm text-gray-500">15 units</div>
+
+            <div className="my-4">
+                <h2 className="text-xl font-bold">Product Details</h2>
+                <p>{product.description}</p>
+                <p>Price: ${product.price}</p>
+                {/* Additional product information */}
             </div>
-            <h2 className="text-xl font-bold mt-2">{product?.name}</h2>
-            <p className="text-gray-700 mt-1">${product?.price.toFixed(2)}</p>
-            <button className="mt-4 px-4 py-2 bg-red-500 text-white rounded" onClick={() => router.push(`/product/${product?.id}`)}>Details</button> // route 
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+
+            <Button onClick={addProductToCart} className="bg-blue-600 text-white w-full sm:w-auto">Add to Cart</Button>
+        </div>
+    );
 };
 
-export default Products;
+export const getServerSideProps: GetServerSideProps = async (context) => {
+    const { id } = context.params as Params;
+    const numericId = Number(id);
+
+    // Fetch product data from the database using the correct method
+    const [product] = await db.select().from(productSchema).where(eq(productSchema.id, numericId));
+
+    if (!product) {
+        return {
+            notFound: true,
+        };
+    }
+
+    return {
+        props: {
+            product,
+        },
+    };
+};
